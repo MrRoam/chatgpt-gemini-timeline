@@ -1066,5 +1066,8 @@
   },
   "returnToPinnedAnswer": {
     "message": "Return to pinned answer"
+  },
+  "useNewReturnPoint": {
+    "message": "Use this new return point"
   }
 }

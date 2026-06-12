@@ -1066,5 +1066,8 @@
   },
   "returnToPinnedAnswer": {
     "message": "回到固定位置"
+  },
+  "useNewReturnPoint": {
+    "message": "使用这个新返回点"
   }
 }

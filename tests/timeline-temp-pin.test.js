@@ -359,11 +359,18 @@ test('timeline toolbar shows a Pin chat button instead of the flash note pencil'
     const pinButton = document.querySelector('.ait-temp-pin-btn');
     assert.ok(pinButton);
     assert.equal(pinButton.getAttribute('aria-label'), 'Pin chat');
+    assert.equal(pinButton.style.display, 'flex');
     assert.match(pinButton.innerHTML, /M12 17v5/);
     assert.equal(document.querySelector('.ait-notepad-btn'), null);
 });
 
-test('auto bottom jump creates a temporary marker at the pre-jump scroll position', () => {
+test('timeline stylesheet defines the temporary pin toolbar button', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    assert.match(css, /\.ait-temp-pin-btn\s*\{/);
+    assert.match(css, /\.ait-temp-pin-btn\.active\s*\{/);
+});
+
+test('auto bottom jump flashes a candidate before creating a temporary marker', () => {
     const { manager, document } = createManager();
     const first = makeMarker(document, 'chatgpt-1');
     const second = makeMarker(document, 'chatgpt-2');
@@ -389,11 +396,16 @@ test('auto bottom jump creates a temporary marker at the pre-jump scroll positio
     manager.activeTurnId = 'chatgpt-4';
 
     assert.equal(manager._maybeApplyPendingAutoBottomJumpPin(), true);
-    assert.equal(manager.temporaryPin.scrollTop, 450);
+    assert.equal(manager.temporaryPin, null);
 
     const pins = manager.ui.timelineBar.querySelectorAll('.timeline-pin-marker');
     assert.equal(pins.length, 1);
-    assert.equal(pins[0].classList.contains('timeline-pin-marker-flash'), false);
+    assert.equal(pins[0].classList.contains('timeline-pin-marker-flash'), true);
+
+    pins[0].dispatchEvent({ type: 'click' });
+
+    assert.equal(manager.temporaryPin.scrollTop, 450);
+    assert.equal(manager.ui.timelineBar.querySelector('.timeline-pin-marker-flash'), null);
 });
 
 test('auto bottom jump flashes a candidate marker without replacing an existing pin', async () => {

@@ -600,6 +600,51 @@ html[data-timeline-theme="dark"] .ait-question-list-btn.active {
     background-color: rgba(116, 80, 255, 0.2);
 }
 
+/* ✅ 临时图钉按钮 */
+.ait-temp-pin-btn {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    border-radius: 6px;
+    flex-shrink: 0;
+    color: #6b6b6b;
+}
+
+.ait-temp-pin-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.ait-temp-pin-btn:hover {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+.ait-temp-pin-btn.active {
+    color: rgb(255, 125, 3);
+    background-color: rgba(255, 125, 3, 0.14);
+}
+
+html[data-timeline-theme="dark"] .ait-temp-pin-btn {
+    color: #9a9a9a;
+}
+
+html[data-timeline-theme="dark"] .ait-temp-pin-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-timeline-theme="dark"] .ait-temp-pin-btn.active {
+    color: rgb(255, 185, 82);
+    background-color: rgba(255, 185, 82, 0.18);
+}
+
 /* ✅ 菜单按钮（搜索图标，在时间轴下方） */
 .timeline-starred-btn {
     position: relative;
