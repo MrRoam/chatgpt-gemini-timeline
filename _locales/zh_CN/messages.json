@@ -1057,5 +1057,14 @@
   },
   "geminiWatermarkErrorUnreadable": {
     "message": "无法读取图片像素（可能被浏览器安全策略拦截），请尝试下载原图"
+  },
+  "pinChatAction": {
+    "message": "固定位置"
+  },
+  "pinNoTarget": {
+    "message": "还没有可固定的回答位置"
+  },
+  "returnToPinnedAnswer": {
+    "message": "回到固定位置"
   }
 }

@@ -138,12 +138,7 @@ function destroyTimelineInstance() {
         timelineManagerInstance = null;
     }
 
-    if (window.AIStateMonitor) {
-        window.AIStateMonitor.getInstance().stop();
-    }
-
     TimelineUtils.removeElementSafe(document.querySelector('.ait-chat-timeline-wrapper'));
-    TimelineUtils.removeElementSafe(document.querySelector('.ait-timeline-star-chat-btn-native'));
     cleanupGlobalObservers();
 }
 
@@ -185,10 +180,6 @@ async function initializeTimeline(version = initVersion) {
             return false;
         }
 
-        // ✅ 启动 AI 状态监控（事件驱动，替代各模块的 setInterval 轮询）
-        if (window.AIStateMonitor) {
-            window.AIStateMonitor.getInstance().start(adapter);
-        }
         return true;
     })().finally(() => {
         if (timelineInitInFlightVersion === version) {

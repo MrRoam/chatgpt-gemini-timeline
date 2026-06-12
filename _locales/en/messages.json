@@ -1057,5 +1057,14 @@
   },
   "geminiWatermarkErrorUnreadable": {
     "message": "Cannot read image pixels (blocked by browser security). Try downloading the original instead."
+  },
+  "pinChatAction": {
+    "message": "Pin chat"
+  },
+  "pinNoTarget": {
+    "message": "No answer to pin yet"
+  },
+  "returnToPinnedAnswer": {
+    "message": "Return to pinned answer"
   }
 }
