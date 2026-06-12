@@ -370,7 +370,7 @@ test('timeline stylesheet defines the temporary pin toolbar button', () => {
     assert.match(css, /\.ait-temp-pin-btn\.active\s*\{/);
 });
 
-test('auto bottom jump flashes a candidate before creating a temporary marker', () => {
+test('auto bottom jump creates a temporary marker when no previous pin exists', () => {
     const { manager, document } = createManager();
     const first = makeMarker(document, 'chatgpt-1');
     const second = makeMarker(document, 'chatgpt-2');
@@ -396,16 +396,30 @@ test('auto bottom jump flashes a candidate before creating a temporary marker', 
     manager.activeTurnId = 'chatgpt-4';
 
     assert.equal(manager._maybeApplyPendingAutoBottomJumpPin(), true);
-    assert.equal(manager.temporaryPin, null);
+    assert.equal(manager.temporaryPin.scrollTop, 450);
 
     const pins = manager.ui.timelineBar.querySelectorAll('.timeline-pin-marker');
     assert.equal(pins.length, 1);
-    assert.equal(pins[0].classList.contains('timeline-pin-marker-flash'), true);
-
-    pins[0].dispatchEvent({ type: 'click' });
-
-    assert.equal(manager.temporaryPin.scrollTop, 450);
+    assert.equal(pins[0].classList.contains('timeline-pin-marker-flash'), false);
     assert.equal(manager.ui.timelineBar.querySelector('.timeline-pin-marker-flash'), null);
+});
+
+test('sync scroll position save starts storage write immediately for page close handlers', () => {
+    const writes = [];
+    const { manager } = createManager({
+        StorageAdapter: {
+            set: (key, value) => {
+                writes.push([key, value]);
+                return Promise.resolve();
+            },
+        },
+    });
+    manager.scrollContainer = { scrollTop: 321 };
+
+    assert.equal(manager.requestScrollPositionSave(), true);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0][0], 'chatTimelineScrollPosition:chatgpt.com/c/test');
+    assert.equal(writes[0][1].scrollTop, 321);
 });
 
 test('auto bottom jump flashes a candidate marker without replacing an existing pin', async () => {

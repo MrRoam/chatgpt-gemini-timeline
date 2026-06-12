@@ -58,6 +58,7 @@ class TimelineManager {
         this.onPageHide = null;
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
+        this.scrollPositionSaveTimer = null;
         // ✅ 长按相关事件处理器
         this.startLongPress = null;
         this.checkLongPressMove = null;
@@ -141,6 +142,7 @@ class TimelineManager {
         this.AUTO_BOTTOM_JUMP_CONFIRM_MS = 6000;
         this.AUTO_BOTTOM_JUMP_PENDING_MS = 2500;
         this.AUTO_BOTTOM_JUMP_MIN_DELTA = 80;
+        this.SCROLL_POSITION_SAVE_DELAY = 750;
         this.pinned = new Set();
         this.pinnedIndexes = new Set();
         
@@ -1296,7 +1298,10 @@ class TimelineManager {
         if (!newScroll) newScroll = document.scrollingElement || document.documentElement || document.body;
         this.scrollContainer = newScroll;
         // Reattach scroll listener
-        this.onScroll = () => this.scheduleScrollSync();
+        this.onScroll = () => {
+            this.scheduleScrollSync();
+            this.scheduleScrollPositionSave();
+        };
         this.scrollContainer.addEventListener('scroll', this.onScroll, { passive: true });
 
         // Recreate IntersectionObserver with new root
@@ -1511,19 +1516,22 @@ class TimelineManager {
         this.ui.timelineBar.addEventListener('touchend', this.cancelLongPress);
         this.ui.timelineBar.addEventListener('touchcancel', this.cancelLongPress);
         
-        // Listen to container scroll to keep marker active state in sync
-        this.onScroll = () => this.scheduleScrollSync();
+        // Listen to container scroll to keep marker active state and reopen position in sync
+        this.onScroll = () => {
+            this.scheduleScrollSync();
+            this.scheduleScrollPositionSave();
+        };
         this.scrollContainer.addEventListener('scroll', this.onScroll, { passive: true });
 
         this.onPageHide = () => {
-            this.saveScrollPosition();
+            this.flushScrollPositionSave();
         };
         this.onBeforeUnload = () => {
-            this.saveScrollPosition();
+            this.flushScrollPositionSave();
         };
         this.onVisibilityChange = () => {
             if (document.visibilityState === 'hidden') {
-                this.saveScrollPosition();
+                this.flushScrollPositionSave();
             }
         };
         window.addEventListener('pagehide', this.onPageHide);
@@ -1816,23 +1824,66 @@ class TimelineManager {
         return location.href.replace(/^https?:\/\//, '');
     }
 
-    async saveScrollPosition() {
+    createScrollPositionSnapshot() {
         if (!this.scrollContainer) return false;
-        if (typeof StorageAdapter === 'undefined' || typeof StorageAdapter.set !== 'function') return false;
 
         const scrollTop = this._getScrollTop();
         if (!Number.isFinite(scrollTop)) return false;
 
         const urlWithoutProtocol = this.getCurrentUrlWithoutProtocol();
-        const value = {
-            url: location.href,
-            urlWithoutProtocol,
-            scrollTop,
-            timestamp: Date.now(),
+        return {
+            key: this.getScrollPositionStorageKey(),
+            value: {
+                url: location.href,
+                urlWithoutProtocol,
+                scrollTop,
+                timestamp: Date.now(),
+            },
         };
+    }
+
+    requestScrollPositionSave() {
+        if (typeof StorageAdapter === 'undefined' || typeof StorageAdapter.set !== 'function') return false;
+
+        const snapshot = this.createScrollPositionSnapshot();
+        if (!snapshot) return false;
 
         try {
-            await StorageAdapter.set(this.getScrollPositionStorageKey(), value);
+            Promise.resolve(StorageAdapter.set(snapshot.key, snapshot.value)).catch(() => {});
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    scheduleScrollPositionSave() {
+        if (this.scrollPositionSaveTimer !== null) {
+            try { clearTimeout(this.scrollPositionSaveTimer); } catch {}
+        }
+
+        this.scrollPositionSaveTimer = setTimeout(() => {
+            this.scrollPositionSaveTimer = null;
+            this.requestScrollPositionSave();
+        }, this.SCROLL_POSITION_SAVE_DELAY);
+    }
+
+    flushScrollPositionSave() {
+        if (this.scrollPositionSaveTimer !== null) {
+            try { clearTimeout(this.scrollPositionSaveTimer); } catch {}
+            this.scrollPositionSaveTimer = null;
+        }
+
+        return this.requestScrollPositionSave();
+    }
+
+    async saveScrollPosition() {
+        if (typeof StorageAdapter === 'undefined' || typeof StorageAdapter.set !== 'function') return false;
+
+        const snapshot = this.createScrollPositionSnapshot();
+        if (!snapshot) return false;
+
+        try {
+            await StorageAdapter.set(snapshot.key, snapshot.value);
             return true;
         } catch {
             return false;
@@ -1971,7 +2022,11 @@ class TimelineManager {
 
         this.pendingAutoBottomJump = null;
 
-        return this._showAutoBottomJumpFlashCandidate(pending.scrollTop);
+        if (this.temporaryPin) {
+            return this._showAutoBottomJumpFlashCandidate(pending.scrollTop);
+        }
+
+        return this.setTemporaryPinAtScrollTop(pending.scrollTop);
     }
 
     _showAutoBottomJumpFlashCandidate(scrollTop, durationMs = this.AUTO_BOTTOM_JUMP_CONFIRM_MS) {
@@ -3286,12 +3341,13 @@ class TimelineManager {
 
     destroy() {
         this._destroyed = true;
-        try { this.saveScrollPosition(); } catch {}
+        try { this.flushScrollPositionSave(); } catch {}
         this._folderManagerInitTimer = TimelineUtils.clearTimerSafe(this._folderManagerInitTimer);
         this._initialRenderTimer = TimelineUtils.clearTimerSafe(this._initialRenderTimer);
         this._initialSecondRenderTimer = TimelineUtils.clearTimerSafe(this._initialSecondRenderTimer);
         this._initialStarredBtnRaf1 = TimelineUtils.clearRafSafe(this._initialStarredBtnRaf1);
         this._initialStarredBtnRaf2 = TimelineUtils.clearRafSafe(this._initialStarredBtnRaf2);
+        this.scrollPositionSaveTimer = TimelineUtils.clearTimerSafe(this.scrollPositionSaveTimer);
 
         // Disconnect observers
         TimelineUtils.disconnectObserverSafe(this.mutationObserver);
