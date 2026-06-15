@@ -301,4 +301,57 @@ class ChatGPTAdapter extends SiteAdapter {
         // ✅ 必须返回 boolean，找不到按钮视为 false（未生成），而不是 null（未实现）
         return !!(submitButton && submitButton.getAttribute('data-testid') === 'stop-button');
     }
+
+    getImageUploadInputSelector() {
+        return 'input[type="file"]';
+    }
+
+    getComposerSubmitButton() {
+        return document.getElementById('composer-submit-button') ||
+            document.querySelector('#composer-submit-button');
+    }
+
+    getComposerRoot() {
+        const prompt = document.getElementById('prompt-textarea');
+        const submitButton = this.getComposerSubmitButton();
+        return prompt?.closest('form') ||
+            submitButton?.closest('form') ||
+            prompt?.closest('[data-testid*="composer"]') ||
+            submitButton?.parentElement ||
+            document;
+    }
+
+    isImageUploadInProgress() {
+        const root = this.getComposerRoot();
+        if (!root?.querySelector) return false;
+
+        return !!root.querySelector([
+            '[role="progressbar"]',
+            '[aria-busy="true"]',
+            '[aria-label*="Uploading"]',
+            '[aria-label*="uploading"]',
+            '[aria-label*="上传中"]',
+            '[data-testid*="upload-progress"]',
+            '[data-testid*="uploading"]'
+        ].join(','));
+    }
+
+    isImageUploadReadyToSend() {
+        const submitButton = this.getComposerSubmitButton();
+        if (!submitButton) return false;
+
+        const isStopButton = submitButton.getAttribute('data-testid') === 'stop-button';
+        const isDisabled = submitButton.disabled === true ||
+            submitButton.getAttribute('disabled') !== null ||
+            submitButton.getAttribute('aria-disabled') === 'true';
+
+        return !isStopButton && !isDisabled && !this.isImageUploadInProgress();
+    }
+
+    sendImageUploadMessage() {
+        const submitButton = this.getComposerSubmitButton();
+        if (!submitButton || !this.isImageUploadReadyToSend()) return false;
+        submitButton.click();
+        return true;
+    }
 }

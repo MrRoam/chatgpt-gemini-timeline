@@ -24,7 +24,7 @@ class TimelineManager {
         this.conversationContainer = null;
         this.markers = [];
         this.activeTurnId = null;
-        this.ui = { timelineBar: null, tooltip: null, track: null, trackContent: null, tempPinBtn: null };
+        this.ui = { timelineBar: null, tooltip: null, track: null, trackContent: null, tempPinBtn: null, autoSendImageUploadToggle: null };
         
         // ✅ 上次渲染时的节点状态（用于变化检测，决定是否需要重新计算）
         this._renderedNodeCount = 0;
@@ -58,6 +58,10 @@ class TimelineManager {
         this.onPageHide = null;
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
+        this.onAutoSendImageUploadChange = null;
+        this.onAutoSendImageUploadsToggleClick = null;
+        this.onAutoSendImageUploadsToggleMouseEnter = null;
+        this.onAutoSendImageUploadsToggleMouseLeave = null;
         this.scrollPositionSaveTimer = null;
         // ✅ 长按相关事件处理器
         this.startLongPress = null;
@@ -145,6 +149,14 @@ class TimelineManager {
         this.SCROLL_POSITION_SAVE_DELAY = 750;
         this.pinned = new Set();
         this.pinnedIndexes = new Set();
+
+        // 上传图片后自动发送：开关持久化，上传等待只保存在当前页面内存中
+        this.autoSendImageUploadsEnabled = false;
+        this._pendingAutoSendImageUpload = null;
+        this._autoSendImageUploadTimer = null;
+        this.AUTO_SEND_IMAGE_UPLOAD_INITIAL_DELAY = 300;
+        this.AUTO_SEND_IMAGE_UPLOAD_CHECK_DELAY = 250;
+        this.AUTO_SEND_IMAGE_UPLOAD_TIMEOUT = 45000;
         
         // ✅ URL 到网站信息的映射字典（包含名称和 logo）
         // 使用 constants.js 中的函数生成 siteNameMap（在 init() 中异步填充）
@@ -188,6 +200,9 @@ class TimelineManager {
         
         // ✅ 同步深色模式状态到 html 元素
         this.syncDarkModeClass();
+
+        await this.loadAutoSendImageUploadsState();
+        if (this._destroyed) return false;
         
         this.injectTimelineUI();
         this.setupEventListeners();
@@ -293,6 +308,7 @@ class TimelineManager {
         }
         this.ui.timelineBar = timelineBar;
         this.applyTimelineActiveColor();
+        this.injectAutoSendImageUploadToggle(wrapper, timelineBar);
         
         // Apply site-specific position from adapter to wrapper
         const position = this.adapter.getTimelinePosition();
@@ -466,6 +482,36 @@ class TimelineManager {
         
         // ✅ 收藏按钮使用相对定位，不需要动态计算位置
         
+    }
+
+    injectAutoSendImageUploadToggle(wrapper, timelineBar) {
+        const inputSelector = this.adapter.getImageUploadInputSelector?.();
+        if (!inputSelector || !wrapper || !timelineBar) return;
+
+        let toggle = wrapper.querySelector('.ait-auto-send-upload-toggle');
+        if (!toggle) {
+            toggle = document.createElement('button');
+            toggle.className = 'ait-auto-send-upload-toggle';
+            toggle.type = 'button';
+            toggle.setAttribute('role', 'switch');
+            toggle.setAttribute('aria-label', '上传图片后自动发送');
+            toggle.innerHTML = `
+                <span class="ait-auto-send-upload-toggle-icon" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                    </svg>
+                </span>
+                <span class="ait-auto-send-upload-toggle-track" aria-hidden="true">
+                    <span class="ait-auto-send-upload-toggle-knob"></span>
+                </span>
+            `;
+        }
+
+        wrapper.insertBefore(toggle, timelineBar);
+        this.ui.autoSendImageUploadToggle = toggle;
+        this.updateAutoSendImageUploadToggleState();
     }
     
     // ✅ 收起/展开按钮的 SVG 图标常量
@@ -1688,6 +1734,14 @@ class TimelineManager {
                     this.platformSettings = changes.timelinePlatformSettings.newValue || {};
                 }
 
+                if (changes._aitAutoSendImageUploadsEnabled) {
+                    this.autoSendImageUploadsEnabled = changes._aitAutoSendImageUploadsEnabled.newValue === true;
+                    if (!this.autoSendImageUploadsEnabled) {
+                        this.clearAutoSendImageUploadPending();
+                    }
+                    this.updateAutoSendImageUploadToggleState();
+                }
+
                 // ✅ 监听时间轴激活节点颜色变化
                 if (changes.timelineActiveColorByPlatform) {
                     this.timelineActiveColorByPlatform = changes.timelineActiveColorByPlatform.newValue || {};
@@ -1719,6 +1773,35 @@ class TimelineManager {
         window.eventDelegateManager.on('click', '.ait-temp-pin-btn', () => {
             this.toggleCurrentTemporaryPin();
         });
+
+        if (this.ui.autoSendImageUploadToggle) {
+            this.onAutoSendImageUploadsToggleClick = () => {
+                this.setAutoSendImageUploadsEnabled(!this.autoSendImageUploadsEnabled);
+            };
+            this.onAutoSendImageUploadsToggleMouseEnter = () => {
+                window.globalTooltipManager?.show(
+                    'auto-send-image-upload-toggle',
+                    'button',
+                    this.ui.autoSendImageUploadToggle,
+                    '上传图片后自动发送',
+                    { placement: 'left' }
+                );
+            };
+            this.onAutoSendImageUploadsToggleMouseLeave = () => {
+                window.globalTooltipManager?.hide();
+            };
+
+            this.ui.autoSendImageUploadToggle.addEventListener('click', this.onAutoSendImageUploadsToggleClick);
+            this.ui.autoSendImageUploadToggle.addEventListener('mouseenter', this.onAutoSendImageUploadsToggleMouseEnter);
+            this.ui.autoSendImageUploadToggle.addEventListener('mouseleave', this.onAutoSendImageUploadsToggleMouseLeave);
+        }
+
+        if (this.adapter.getImageUploadInputSelector?.()) {
+            this.onAutoSendImageUploadChange = (e) => {
+                this.handleAutoSendImageUploadChange(e);
+            };
+            document.addEventListener('change', this.onAutoSendImageUploadChange, true);
+        }
         
         // ✅ 优化：监听主题变化，清空缓存
         this.setupThemeChangeListener();
@@ -1738,6 +1821,143 @@ class TimelineManager {
         if (typeof initChatTimeRecorder === 'function') {
             initChatTimeRecorder();
         }
+    }
+
+    async loadAutoSendImageUploadsState() {
+        try {
+            const result = await chrome.storage.local.get('_aitAutoSendImageUploadsEnabled');
+            this.autoSendImageUploadsEnabled = result._aitAutoSendImageUploadsEnabled === true;
+        } catch (e) {
+            this.autoSendImageUploadsEnabled = false;
+        }
+    }
+
+    async setAutoSendImageUploadsEnabled(enabled) {
+        this.autoSendImageUploadsEnabled = enabled === true;
+        if (!this.autoSendImageUploadsEnabled) {
+            this.clearAutoSendImageUploadPending();
+        }
+        this.updateAutoSendImageUploadToggleState();
+
+        try {
+            if (typeof StorageAdapter !== 'undefined' && StorageAdapter?.set) {
+                await StorageAdapter.set('_aitAutoSendImageUploadsEnabled', this.autoSendImageUploadsEnabled);
+            } else {
+                await chrome.storage.local.set({ _aitAutoSendImageUploadsEnabled: this.autoSendImageUploadsEnabled });
+            }
+        } catch (e) {
+            // UI state stays in memory even if persistence fails.
+        }
+    }
+
+    updateAutoSendImageUploadToggleState() {
+        const toggle = this.ui?.autoSendImageUploadToggle;
+        if (!toggle) return;
+        const checked = this.autoSendImageUploadsEnabled === true;
+        toggle.setAttribute('aria-checked', checked ? 'true' : 'false');
+        toggle.classList.toggle('active', checked);
+    }
+
+    handleAutoSendImageUploadChange(e) {
+        if (!this.autoSendImageUploadsEnabled || this._destroyed) return false;
+
+        const input = e?.target;
+        const selector = this.adapter.getImageUploadInputSelector?.();
+        if (!input || !selector || !this.isAutoSendImageUploadInput(input, selector)) {
+            return false;
+        }
+
+        if (!this.filesContainImage(input.files)) {
+            return false;
+        }
+
+        this.queueAutoSendImageUpload();
+        return true;
+    }
+
+    isAutoSendImageUploadInput(input, selector) {
+        try {
+            return input.matches?.(selector) === true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    filesContainImage(files) {
+        return Array.from(files || []).some(file => this.isImageFile(file));
+    }
+
+    isImageFile(file) {
+        const type = String(file?.type || '').toLowerCase();
+        if (type.startsWith('image/')) return true;
+
+        const name = String(file?.name || '').toLowerCase();
+        return /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/.test(name);
+    }
+
+    queueAutoSendImageUpload() {
+        this._pendingAutoSendImageUpload = {
+            createdAt: Date.now(),
+        };
+        this.scheduleAutoSendImageUploadCheck(this.AUTO_SEND_IMAGE_UPLOAD_INITIAL_DELAY);
+    }
+
+    scheduleAutoSendImageUploadCheck(delay = this.AUTO_SEND_IMAGE_UPLOAD_CHECK_DELAY) {
+        this._autoSendImageUploadTimer = TimelineUtils.clearTimerSafe(this._autoSendImageUploadTimer);
+        this._autoSendImageUploadTimer = setTimeout(() => {
+            this._autoSendImageUploadTimer = null;
+            this.tryAutoSendImageUpload();
+        }, delay);
+    }
+
+    tryAutoSendImageUpload() {
+        const pending = this._pendingAutoSendImageUpload;
+        if (!pending || this._destroyed || !this.autoSendImageUploadsEnabled) {
+            this.clearAutoSendImageUploadPending();
+            return false;
+        }
+
+        if (Date.now() - pending.createdAt > this.AUTO_SEND_IMAGE_UPLOAD_TIMEOUT) {
+            this.clearAutoSendImageUploadPending();
+            return false;
+        }
+
+        let isReady = false;
+        try {
+            isReady = this.adapter.isImageUploadReadyToSend?.() === true;
+        } catch (e) {
+            isReady = false;
+        }
+
+        if (!isReady) {
+            this.scheduleAutoSendImageUploadCheck();
+            return false;
+        }
+
+        if (typeof this.adapter.sendImageUploadMessage !== 'function') {
+            this.clearAutoSendImageUploadPending();
+            return false;
+        }
+
+        let sent = false;
+        try {
+            sent = this.adapter.sendImageUploadMessage() === true;
+        } catch (e) {
+            sent = false;
+        }
+
+        if (sent) {
+            this.clearAutoSendImageUploadPending();
+            return true;
+        }
+
+        this.scheduleAutoSendImageUploadCheck();
+        return false;
+    }
+
+    clearAutoSendImageUploadPending() {
+        this._autoSendImageUploadTimer = TimelineUtils.clearTimerSafe(this._autoSendImageUploadTimer);
+        this._pendingAutoSendImageUpload = null;
     }
     
     /**
@@ -3431,6 +3651,10 @@ class TimelineManager {
         TimelineUtils.removeEventListenerSafe(this.ui.timelineBar, 'wheel', this.onTimelineWheel);
         TimelineUtils.removeEventListenerSafe(window, 'resize', this.onWindowResize);
         TimelineUtils.removeEventListenerSafe(window.visualViewport, 'resize', this.onVisualViewportResize);
+        TimelineUtils.removeEventListenerSafe(document, 'change', this.onAutoSendImageUploadChange, true);
+        TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'click', this.onAutoSendImageUploadsToggleClick);
+        TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'mouseenter', this.onAutoSendImageUploadsToggleMouseEnter);
+        TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'mouseleave', this.onAutoSendImageUploadsToggleMouseLeave);
         
         // Clear timers and RAF
         this.scrollRafId = TimelineUtils.clearRafSafe(this.scrollRafId);
@@ -3441,6 +3665,7 @@ class TimelineManager {
         this.resizeIdleRICId = TimelineUtils.clearIdleCallbackSafe(this.resizeIdleRICId);
         // ✅ 移除：longPressTimer 已删除
         this.zeroTurnsTimer = TimelineUtils.clearTimerSafe(this.zeroTurnsTimer);
+        this.clearAutoSendImageUploadPending();
         this._clearAutoBottomJumpFlashCandidate();
         this.showRafId = TimelineUtils.clearRafSafe(this.showRafId);
         
@@ -3454,6 +3679,9 @@ class TimelineManager {
         
         // ✅ 清理临时 Pin 按钮
         TimelineUtils.removeElementSafe(this.ui.tempPinBtn);
+
+        // ✅ 清理上传图片自动发送开关
+        TimelineUtils.removeElementSafe(this.ui.autoSendImageUploadToggle);
         
         // ✅ 清理切换按钮
         TimelineUtils.removeElementSafe(this.ui.toggleBtn);
@@ -3462,7 +3690,7 @@ class TimelineManager {
         this.cleanupScrollPadding();
         
         // Clear references
-        this.ui = { timelineBar: null, track: null, trackContent: null, tempPinBtn: null };
+        this.ui = { timelineBar: null, track: null, trackContent: null, tempPinBtn: null, autoSendImageUploadToggle: null };
         this.markers = [];
         this.activeTurnId = null;
         this.scrollContainer = null;
@@ -3479,6 +3707,10 @@ class TimelineManager {
         this.onPageHide = null;
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
+        this.onAutoSendImageUploadChange = null;
+        this.onAutoSendImageUploadsToggleClick = null;
+        this.onAutoSendImageUploadsToggleMouseEnter = null;
+        this.onAutoSendImageUploadsToggleMouseLeave = null;
         // ✅ 清理长按相关的引用
         this.startLongPress = this.checkLongPressMove = this.cancelLongPress = null;
         // ✅ 清理键盘导航引用
@@ -3486,6 +3718,7 @@ class TimelineManager {
         this.pendingActiveId = null;
         this.temporaryPin = null;
         this.pendingAutoBottomJump = null;
+        this._pendingAutoSendImageUpload = null;
     }
 
     // --- Star/Highlight helpers ---

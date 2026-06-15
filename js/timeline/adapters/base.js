@@ -176,5 +176,29 @@ class SiteAdapter {
     isAIGenerating() {
         return null; // 默认返回 null 表示未实现，子类需覆盖才能启用 padding 功能
     }
+
+    /**
+     * Get file input selector for image-upload auto-send.
+     * @returns {string|null}
+     */
+    getImageUploadInputSelector() {
+        return null;
+    }
+
+    /**
+     * Check whether the uploaded image can be sent now.
+     * @returns {boolean}
+     */
+    isImageUploadReadyToSend() {
+        return false;
+    }
+
+    /**
+     * Send the current composer message after an image upload finishes.
+     * @returns {boolean} true when a send action was triggered
+     */
+    sendImageUploadMessage() {
+        return false;
+    }
     
 }

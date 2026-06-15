@@ -95,8 +95,22 @@ class FakeElement {
         return child;
     }
 
+    insertBefore(child, referenceChild) {
+        if (!referenceChild) return this.appendChild(child);
+        const index = this.children.indexOf(referenceChild);
+        if (index === -1) return this.appendChild(child);
+        child.parentNode = this;
+        this.children.splice(index, 0, child);
+        return child;
+    }
+
     get parentElement() {
         return this.parentNode;
+    }
+
+    contains(target) {
+        if (target === this) return true;
+        return this.children.some(child => child.contains?.(target));
     }
 
     get isConnected() {
@@ -150,17 +164,29 @@ class FakeElement {
     matches(selector) {
         const simpleSelectors = selector.split(',').map(part => part.trim()).filter(Boolean);
         return simpleSelectors.some(simpleSelector => {
+            if (simpleSelector.startsWith('#')) {
+                return this.attributes.id === simpleSelector.slice(1);
+            }
             if (simpleSelector.startsWith('.')) {
                 return this.classList.contains(simpleSelector.slice(1));
             }
+            const tagAttrMatch = simpleSelector.match(/^([a-z0-9-]+)(\[.+\])$/i);
+            if (tagAttrMatch) {
+                const [, tagName, attrSelector] = tagAttrMatch;
+                return this.tagName.toLowerCase() === tagName.toLowerCase() && this._matchesAttributeSelector(attrSelector);
+            }
             if (/^\[.+\]$/.test(simpleSelector)) {
-                const attrs = [...simpleSelector.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)];
-                return attrs.length > 0 && attrs.every(([, name, value]) => {
-                    if (!(name in this.attributes)) return false;
-                    return value === undefined || this.attributes[name] === value;
-                });
+                return this._matchesAttributeSelector(simpleSelector);
             }
             return this.tagName.toLowerCase() === simpleSelector.toLowerCase();
+        });
+    }
+
+    _matchesAttributeSelector(selector) {
+        const attrs = [...selector.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)];
+        return attrs.length > 0 && attrs.every(([, name, value]) => {
+            if (!(name in this.attributes)) return false;
+            return value === undefined || this.attributes[name] === value;
         });
     }
 
@@ -260,6 +286,10 @@ function loadTimelineManager(options = {}) {
         },
         TimelineUtils: {
             removeElementSafe: (element) => element?.remove(),
+            clearTimerSafe: (timer) => {
+                if (timer) clearTimeout(timer);
+                return null;
+            },
         },
     };
     context.window.window = context.window;
@@ -278,6 +308,7 @@ function createManager(options = {}) {
         getTimelinePosition: () => ({}),
         getScrollOffset: () => 0,
         shouldHideTimeline: () => false,
+        getImageUploadInputSelector: () => 'input[type="file"]',
     };
     const manager = new TimelineManager(adapter);
     manager.applyTimelineActiveColor = () => {};
@@ -364,10 +395,100 @@ test('timeline toolbar shows a Pin chat button instead of the flash note pencil'
     assert.equal(document.querySelector('.ait-notepad-btn'), null);
 });
 
+test('timeline toolbar shows an auto-send image upload switch above the timeline', () => {
+    const { manager, document } = createManager();
+    manager.ui.timelineBar.remove();
+    manager.ui.timelineBar = null;
+
+    manager.injectTimelineUI();
+
+    const wrapper = document.querySelector('.ait-chat-timeline-wrapper');
+    const toggle = document.querySelector('.ait-auto-send-upload-toggle');
+    const timelineBar = document.querySelector('.ait-chat-timeline-bar');
+
+    assert.ok(toggle);
+    assert.equal(toggle.getAttribute('role'), 'switch');
+    assert.equal(toggle.getAttribute('aria-checked'), 'false');
+    assert.equal(toggle.getAttribute('aria-label'), '上传图片后自动发送');
+    assert.equal(wrapper.children[0], toggle);
+    assert.equal(wrapper.children[1], timelineBar);
+});
+
+test('auto-send image upload waits for upload readiness then sends once', () => {
+    const timers = [];
+    const { manager, document } = createManager({
+        setTimeout: (callback, delay) => {
+            const timer = { callback, delay, cleared: false };
+            timers.push(timer);
+            return timer;
+        },
+        clearTimeout: (timer) => {
+            if (timer) timer.cleared = true;
+        },
+    });
+    timers.length = 0;
+    let ready = false;
+    let sent = 0;
+    manager.autoSendImageUploadsEnabled = true;
+    manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
+    manager.adapter.isImageUploadReadyToSend = () => ready;
+    manager.adapter.sendImageUploadMessage = () => {
+        sent++;
+        return true;
+    };
+
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.files = [{ name: 'photo.png', type: 'image/png' }];
+
+    assert.equal(manager.handleAutoSendImageUploadChange({ target: input }), true);
+    assert.equal(sent, 0);
+    assert.equal(timers[0].delay, 300);
+
+    timers[0].callback();
+    assert.equal(sent, 0);
+
+    ready = true;
+    timers[1].callback();
+    assert.equal(sent, 1);
+    assert.equal(manager._pendingAutoSendImageUpload, null);
+});
+
+test('auto-send image upload ignores non-image files and disabled switch', () => {
+    const timers = [];
+    const { manager, document } = createManager({
+        setTimeout: (callback, delay) => {
+            timers.push({ callback, delay });
+            return timers.length;
+        },
+    });
+    timers.length = 0;
+    manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
+
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.files = [{ name: 'notes.txt', type: 'text/plain' }];
+
+    manager.autoSendImageUploadsEnabled = true;
+    assert.equal(manager.handleAutoSendImageUploadChange({ target: input }), false);
+    assert.equal(timers.length, 0);
+
+    input.files = [{ name: 'photo.jpg', type: 'image/jpeg' }];
+    manager.autoSendImageUploadsEnabled = false;
+    assert.equal(manager.handleAutoSendImageUploadChange({ target: input }), false);
+    assert.equal(timers.length, 0);
+});
+
 test('timeline stylesheet defines the temporary pin toolbar button', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
     assert.match(css, /\.ait-temp-pin-btn\s*\{/);
     assert.match(css, /\.ait-temp-pin-btn\.active\s*\{/);
+});
+
+test('timeline stylesheet defines the auto-send image upload switch', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    assert.match(css, /\.ait-auto-send-upload-toggle\s*\{/);
+    assert.match(css, /\.ait-auto-send-upload-toggle\[aria-checked="true"\]/);
 });
 
 test('auto bottom jump creates a temporary marker when no previous pin exists', () => {
