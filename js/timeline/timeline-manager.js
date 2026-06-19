@@ -1934,6 +1934,7 @@ class TimelineManager {
     queueAutoSendImageUpload() {
         this._pendingAutoSendImageUpload = {
             createdAt: Date.now(),
+            wasReadyAtStart: this.isAutoSendImageUploadReady(),
         };
         this.scheduleAutoSendImageUploadCheck(this.AUTO_SEND_IMAGE_UPLOAD_INITIAL_DELAY);
     }
@@ -1958,23 +1959,12 @@ class TimelineManager {
             return false;
         }
 
-        let isReady = false;
-        try {
-            isReady = this.adapter.isImageUploadReadyToSend?.() === true;
-        } catch (e) {
-            isReady = false;
-        }
+        const isReady = this.isAutoSendImageUploadReady();
 
-        let hasAttachment = true;
-        if (typeof this.adapter.hasImageUploadAttachment === 'function') {
-            try {
-                hasAttachment = this.adapter.hasImageUploadAttachment() === true;
-            } catch (e) {
-                hasAttachment = false;
-            }
-        }
+        const hasAttachment = this.hasAutoSendImageUploadAttachment();
+        const needsAttachmentEvidence = pending.wasReadyAtStart === true;
 
-        if (!isReady || !hasAttachment) {
+        if (!isReady || (needsAttachmentEvidence && !hasAttachment)) {
             this.scheduleAutoSendImageUploadCheck();
             return false;
         }
@@ -1998,6 +1988,26 @@ class TimelineManager {
 
         this.scheduleAutoSendImageUploadCheck();
         return false;
+    }
+
+    isAutoSendImageUploadReady() {
+        try {
+            return this.adapter.isImageUploadReadyToSend?.() === true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    hasAutoSendImageUploadAttachment() {
+        if (typeof this.adapter.hasImageUploadAttachment !== 'function') {
+            return true;
+        }
+
+        try {
+            return this.adapter.hasImageUploadAttachment() === true;
+        } catch (e) {
+            return false;
+        }
     }
 
     clearAutoSendImageUploadPending() {

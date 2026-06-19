@@ -491,6 +491,43 @@ test('auto-send image upload waits for an attachment preview before sending', ()
     assert.equal(sent, 1);
 });
 
+test('auto-send image upload sends when upload makes a disabled composer ready even without a detectable preview', () => {
+    const timers = [];
+    const { manager, document } = createManager({
+        setTimeout: (callback, delay) => {
+            const timer = { callback, delay, cleared: false };
+            timers.push(timer);
+            return timer;
+        },
+        clearTimeout: (timer) => {
+            if (timer) timer.cleared = true;
+        },
+    });
+    timers.length = 0;
+    let ready = false;
+    let sent = 0;
+    manager.autoSendImageUploadsEnabled = true;
+    manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
+    manager.adapter.isImageUploadReadyToSend = () => ready;
+    manager.adapter.hasImageUploadAttachment = () => false;
+    manager.adapter.sendImageUploadMessage = () => {
+        sent++;
+        return true;
+    };
+
+    const input = document.createElement('input');
+    input.setAttribute('type', 'file');
+    input.files = [{ name: 'photo.png', type: 'image/png' }];
+
+    assert.equal(manager.handleAutoSendImageUploadChange({ target: input }), true);
+    timers[0].callback();
+    assert.equal(sent, 0);
+
+    ready = true;
+    timers[1].callback();
+    assert.equal(sent, 1);
+});
+
 test('auto-send image upload handles pasted image files', () => {
     const timers = [];
     const { manager } = createManager({
