@@ -194,6 +194,14 @@ class SiteAdapter {
     }
 
     /**
+     * Check whether the composer currently contains an uploaded image/file attachment.
+     * @returns {boolean}
+     */
+    hasImageUploadAttachment() {
+        return false;
+    }
+
+    /**
      * Send the current composer message after an image upload finishes.
      * @returns {boolean} true when a send action was triggered
      */

@@ -336,6 +336,25 @@ class ChatGPTAdapter extends SiteAdapter {
         ].join(','));
     }
 
+    hasImageUploadAttachment() {
+        const root = this.getComposerRoot();
+        if (!root?.querySelector) return false;
+
+        return !!root.querySelector([
+            '[data-testid*="file-preview"]',
+            '[data-testid*="file-thumbnail"]',
+            '[data-testid*="attachment"]',
+            '[data-testid*="uploaded-file"]',
+            '[data-testid*="image"]',
+            'img[src^="blob:"]',
+            'img[src^="data:image"]',
+            'img[alt*="Uploaded"]',
+            'img[alt*="uploaded"]',
+            'img[alt*="upload"]',
+            'img[alt*="上传"]'
+        ].join(','));
+    }
+
     isImageUploadReadyToSend() {
         const submitButton = this.getComposerSubmitButton();
         if (!submitButton) return false;

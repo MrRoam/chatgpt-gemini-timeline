@@ -59,6 +59,7 @@ class TimelineManager {
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
         this.onAutoSendImageUploadChange = null;
+        this.onAutoSendImageUploadCandidate = null;
         this.onAutoSendImageUploadsToggleClick = null;
         this.onAutoSendImageUploadsToggleMouseEnter = null;
         this.onAutoSendImageUploadsToggleMouseLeave = null;
@@ -1802,6 +1803,12 @@ class TimelineManager {
             };
             document.addEventListener('change', this.onAutoSendImageUploadChange, true);
         }
+
+        this.onAutoSendImageUploadCandidate = (e) => {
+            this.handleAutoSendImageUploadCandidateEvent(e);
+        };
+        document.addEventListener('paste', this.onAutoSendImageUploadCandidate, true);
+        document.addEventListener('drop', this.onAutoSendImageUploadCandidate, true);
         
         // ✅ 优化：监听主题变化，清空缓存
         this.setupThemeChangeListener();
@@ -1875,6 +1882,35 @@ class TimelineManager {
         return true;
     }
 
+    handleAutoSendImageUploadCandidateEvent(e) {
+        if (!this.autoSendImageUploadsEnabled || this._destroyed) return false;
+
+        const files = this.getImageUploadFilesFromEvent(e);
+        if (!this.filesContainImage(files)) {
+            return false;
+        }
+
+        this.queueAutoSendImageUpload();
+        return true;
+    }
+
+    getImageUploadFilesFromEvent(e) {
+        const source = e?.clipboardData || e?.dataTransfer;
+        const directFiles = Array.from(source?.files || []);
+        if (directFiles.length > 0) return directFiles;
+
+        return Array.from(source?.items || [])
+            .filter(item => item?.kind === 'file')
+            .map(item => {
+                try {
+                    return item.getAsFile?.();
+                } catch (error) {
+                    return null;
+                }
+            })
+            .filter(Boolean);
+    }
+
     isAutoSendImageUploadInput(input, selector) {
         try {
             return input.matches?.(selector) === true;
@@ -1929,7 +1965,16 @@ class TimelineManager {
             isReady = false;
         }
 
-        if (!isReady) {
+        let hasAttachment = true;
+        if (typeof this.adapter.hasImageUploadAttachment === 'function') {
+            try {
+                hasAttachment = this.adapter.hasImageUploadAttachment() === true;
+            } catch (e) {
+                hasAttachment = false;
+            }
+        }
+
+        if (!isReady || !hasAttachment) {
             this.scheduleAutoSendImageUploadCheck();
             return false;
         }
@@ -3652,6 +3697,8 @@ class TimelineManager {
         TimelineUtils.removeEventListenerSafe(window, 'resize', this.onWindowResize);
         TimelineUtils.removeEventListenerSafe(window.visualViewport, 'resize', this.onVisualViewportResize);
         TimelineUtils.removeEventListenerSafe(document, 'change', this.onAutoSendImageUploadChange, true);
+        TimelineUtils.removeEventListenerSafe(document, 'paste', this.onAutoSendImageUploadCandidate, true);
+        TimelineUtils.removeEventListenerSafe(document, 'drop', this.onAutoSendImageUploadCandidate, true);
         TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'click', this.onAutoSendImageUploadsToggleClick);
         TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'mouseenter', this.onAutoSendImageUploadsToggleMouseEnter);
         TimelineUtils.removeEventListenerSafe(this.ui.autoSendImageUploadToggle, 'mouseleave', this.onAutoSendImageUploadsToggleMouseLeave);
@@ -3708,6 +3755,7 @@ class TimelineManager {
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
         this.onAutoSendImageUploadChange = null;
+        this.onAutoSendImageUploadCandidate = null;
         this.onAutoSendImageUploadsToggleClick = null;
         this.onAutoSendImageUploadsToggleMouseEnter = null;
         this.onAutoSendImageUploadsToggleMouseLeave = null;
