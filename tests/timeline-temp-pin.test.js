@@ -633,6 +633,81 @@ test('auto bottom jump creates a temporary marker when no previous pin exists', 
     assert.equal(manager.ui.timelineBar.querySelector('.timeline-pin-marker-flash'), null);
 });
 
+test('auto bottom jump still uses the pre-jump position after scroll sync overwrites the latest snapshot', () => {
+    const { manager, document } = createManager();
+    const first = makeMarker(document, 'chatgpt-1');
+    const second = makeMarker(document, 'chatgpt-2');
+    const third = makeMarker(document, 'chatgpt-3');
+    const fourth = makeMarker(document, 'chatgpt-4');
+    manager.markers = [first, second, third];
+    manager.firstUserTurnOffset = 100;
+    manager.contentSpanPx = 1000;
+    manager.scrollContainer = { scrollTop: 450 };
+    manager.activeTurnId = 'chatgpt-1';
+    manager._recordScrollSnapshot();
+
+    manager.scrollContainer.scrollTop = 1200;
+    manager.activeTurnId = 'chatgpt-3';
+    manager._recordScrollSnapshot();
+
+    assert.equal(manager._captureAutoBottomJumpCandidate(3, 4), true);
+
+    manager.markers = [first, second, third, fourth];
+    manager.activeTurnId = 'chatgpt-4';
+
+    assert.equal(manager._maybeApplyPendingAutoBottomJumpPin(), true);
+    assert.equal(manager.temporaryPin.scrollTop, 450);
+});
+
+test('auto bottom jump prefers the scroll position captured at message send', () => {
+    const { manager, document } = createManager();
+    const first = makeMarker(document, 'chatgpt-1');
+    const second = makeMarker(document, 'chatgpt-2');
+    const third = makeMarker(document, 'chatgpt-3');
+    const fourth = makeMarker(document, 'chatgpt-4');
+    manager.markers = [first, second, third];
+    manager.firstUserTurnOffset = 100;
+    manager.contentSpanPx = 1000;
+    manager.scrollContainer = { scrollTop: 450 };
+    manager.activeTurnId = 'chatgpt-1';
+
+    assert.equal(manager._capturePotentialMessageSendSnapshot(), true);
+
+    manager.scrollContainer.scrollTop = 1200;
+    manager.activeTurnId = 'chatgpt-3';
+    manager._recordScrollSnapshot();
+
+    assert.equal(manager._captureAutoBottomJumpCandidate(3, 4), true);
+    assert.equal(manager.pendingAutoBottomJump.scrollTop, 450);
+
+    manager.markers = [first, second, third, fourth];
+    manager.activeTurnId = 'chatgpt-4';
+
+    assert.equal(manager._maybeApplyPendingAutoBottomJumpPin(), true);
+    assert.equal(manager.temporaryPin.scrollTop, 450);
+});
+
+test('auto bottom jump does not reuse a stale middle position when message send starts at the bottom', () => {
+    const { manager, document } = createManager();
+    const first = makeMarker(document, 'chatgpt-1');
+    const second = makeMarker(document, 'chatgpt-2');
+    const third = makeMarker(document, 'chatgpt-3');
+    manager.markers = [first, second, third];
+    manager.firstUserTurnOffset = 100;
+    manager.contentSpanPx = 1000;
+    manager.scrollContainer = { scrollTop: 450 };
+    manager.activeTurnId = 'chatgpt-1';
+    manager._recordScrollSnapshot();
+
+    manager.scrollContainer.scrollTop = 1200;
+    manager.activeTurnId = 'chatgpt-3';
+    manager._recordScrollSnapshot();
+
+    assert.equal(manager._capturePotentialMessageSendSnapshot(), false);
+    assert.equal(manager._captureAutoBottomJumpCandidate(3, 4), false);
+    assert.equal(manager.pendingAutoBottomJump, null);
+});
+
 test('sync scroll position save starts storage write immediately for page close handlers', () => {
     const writes = [];
     const { manager } = createManager({

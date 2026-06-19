@@ -58,6 +58,8 @@ class TimelineManager {
         this.onPageHide = null;
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
+        this.onPotentialSendClick = null;
+        this.onPotentialSendKeyDown = null;
         this.onAutoSendImageUploadChange = null;
         this.onAutoSendImageUploadCandidate = null;
         this.onAutoSendImageUploadsToggleClick = null;
@@ -142,10 +144,14 @@ class TimelineManager {
         this.autoBottomJumpFlashMarker = null;
         this.autoBottomJumpFlashTimer = null;
         this._lastScrollSnapshot = null;
+        this._lastPreBottomScrollSnapshot = null;
+        this._pendingMessageSendSnapshot = null;
         this._initialNavigationHandled = false;
         this._savedScrollPositionRestored = false;
         this.AUTO_BOTTOM_JUMP_CONFIRM_MS = 6000;
         this.AUTO_BOTTOM_JUMP_PENDING_MS = 2500;
+        this.AUTO_BOTTOM_JUMP_PRE_SNAPSHOT_MS = 2500;
+        this.AUTO_BOTTOM_JUMP_SEND_SNAPSHOT_MS = 5000;
         this.AUTO_BOTTOM_JUMP_MIN_DELTA = 80;
         this.SCROLL_POSITION_SAVE_DELAY = 750;
         this.pinned = new Set();
@@ -1570,6 +1576,24 @@ class TimelineManager {
         };
         this.scrollContainer.addEventListener('scroll', this.onScroll, { passive: true });
 
+        this.onPotentialSendClick = (e) => {
+            const submitButton = this.adapter.getComposerSubmitButton?.();
+            if (!submitButton || !e.target) return;
+            if (e.target === submitButton || submitButton.contains?.(e.target)) {
+                this._capturePotentialMessageSendSnapshot();
+            }
+        };
+        document.addEventListener('click', this.onPotentialSendClick, true);
+
+        this.onPotentialSendKeyDown = (e) => {
+            if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+            const composerRoot = this.adapter.getComposerRoot?.();
+            if (composerRoot?.contains?.(e.target)) {
+                this._capturePotentialMessageSendSnapshot();
+            }
+        };
+        document.addEventListener('keydown', this.onPotentialSendKeyDown, true);
+
         this.onPageHide = () => {
             this.flushScrollPositionSave();
         };
@@ -2227,19 +2251,57 @@ class TimelineManager {
         return this.restoreSavedScrollPosition();
     }
 
-    _recordScrollSnapshot() {
-        if (!this.scrollContainer || !this.markers?.length) return;
-
+    _createScrollSnapshot() {
+        if (!this.scrollContainer || !this.markers?.length) return null;
         const activeId = this.pendingActiveId || this.activeTurnId;
         const activeIndex = this.markers.findIndex(marker => marker.id === activeId);
         const totalCount = this.markers.length;
-        this._lastScrollSnapshot = {
+        return {
             scrollTop: this._getScrollTop(),
             activeIndex,
             totalCount,
             isLast: activeIndex === totalCount - 1,
             timestamp: Date.now(),
         };
+    }
+
+    _recordScrollSnapshot() {
+        const snapshot = this._createScrollSnapshot();
+        if (!snapshot) return;
+
+        const previousSnapshot = this._lastScrollSnapshot;
+        const totalCount = snapshot.totalCount;
+
+        if (this._isUsablePreBottomSnapshot(snapshot, totalCount)) {
+            this._lastPreBottomScrollSnapshot = snapshot;
+        } else if (
+            snapshot.isLast &&
+            this._isUsablePreBottomSnapshot(previousSnapshot, totalCount) &&
+            Math.abs(snapshot.scrollTop - previousSnapshot.scrollTop) >= this.AUTO_BOTTOM_JUMP_MIN_DELTA
+        ) {
+            this._lastPreBottomScrollSnapshot = previousSnapshot;
+        }
+
+        this._lastScrollSnapshot = snapshot;
+    }
+
+    _capturePotentialMessageSendSnapshot() {
+        if (this.adapter?.isReverseScroll?.()) return false;
+
+        const snapshot = this._createScrollSnapshot();
+        if (!snapshot) return false;
+
+        this._pendingMessageSendSnapshot = snapshot;
+        return this._isUsablePreBottomSnapshot(snapshot, snapshot.totalCount);
+    }
+
+    _isUsablePreBottomSnapshot(snapshot, previousCount) {
+        return !!snapshot &&
+            Number.isFinite(snapshot.scrollTop) &&
+            snapshot.totalCount === previousCount &&
+            snapshot.isLast === false &&
+            snapshot.activeIndex >= 0 &&
+            snapshot.activeIndex < previousCount - 1;
     }
 
     _captureAutoBottomJumpCandidate(previousCount, currentCount) {
@@ -2249,19 +2311,51 @@ class TimelineManager {
 
         const currentActiveIndex = this.markers.findIndex(marker => marker.id === this.activeTurnId);
         const snapshot = this._lastScrollSnapshot;
-        const snapshotUsable = snapshot &&
+        const now = Date.now();
+        const sendSnapshot = this._pendingMessageSendSnapshot;
+        const sendSnapshotIsRecent =
+            sendSnapshot &&
+            sendSnapshot.totalCount === previousCount &&
+            now - sendSnapshot.timestamp <= this.AUTO_BOTTOM_JUMP_SEND_SNAPSHOT_MS;
+        const sendSnapshotUsable =
+            sendSnapshotIsRecent &&
+            this._isUsablePreBottomSnapshot(sendSnapshot, previousCount);
+        const sendSnapshotBlocksFallback =
+            sendSnapshotIsRecent &&
+            sendSnapshot.isLast === true;
+
+        if (sendSnapshot && !sendSnapshotIsRecent) {
+            this._pendingMessageSendSnapshot = null;
+        }
+
+        if (sendSnapshotBlocksFallback) {
+            this._pendingMessageSendSnapshot = null;
+            return false;
+        }
+
+        const snapshotUsable = this._isUsablePreBottomSnapshot(snapshot, previousCount);
+        const preBottomSnapshot = this._lastPreBottomScrollSnapshot;
+        const overwrittenSnapshotUsable =
+            !snapshotUsable &&
+            this._isUsablePreBottomSnapshot(preBottomSnapshot, previousCount) &&
+            snapshot?.isLast === true &&
+            snapshot.totalCount === previousCount &&
             Number.isFinite(snapshot.scrollTop) &&
-            snapshot.isLast === false &&
-            snapshot.activeIndex >= 0 &&
-            snapshot.activeIndex < previousCount - 1;
+            now - snapshot.timestamp <= this.AUTO_BOTTOM_JUMP_PRE_SNAPSHOT_MS &&
+            Math.abs(snapshot.scrollTop - preBottomSnapshot.scrollTop) >= this.AUTO_BOTTOM_JUMP_MIN_DELTA;
 
         const activeWasBeforeLast = currentActiveIndex >= 0 && currentActiveIndex < this.markers.length - 1;
-        if (!snapshotUsable && !activeWasBeforeLast) return false;
+        if (!sendSnapshotUsable && !snapshotUsable && !overwrittenSnapshotUsable && !activeWasBeforeLast) return false;
 
-        const capturedScrollTop = snapshotUsable ? snapshot.scrollTop : this._getScrollTop();
+        const capturedScrollTop = sendSnapshotUsable
+            ? sendSnapshot.scrollTop
+            : snapshotUsable
+                ? snapshot.scrollTop
+                : overwrittenSnapshotUsable
+                    ? preBottomSnapshot.scrollTop
+                    : this._getScrollTop();
         if (!Number.isFinite(capturedScrollTop)) return false;
 
-        const now = Date.now();
         this.pendingAutoBottomJump = {
             scrollTop: Math.max(0, capturedScrollTop),
             previousCount,
@@ -2269,6 +2363,12 @@ class TimelineManager {
             createdAt: now,
             expiresAt: now + this.AUTO_BOTTOM_JUMP_PENDING_MS,
         };
+        if (overwrittenSnapshotUsable) {
+            this._lastPreBottomScrollSnapshot = null;
+        }
+        if (sendSnapshotIsRecent) {
+            this._pendingMessageSendSnapshot = null;
+        }
         return true;
     }
 
@@ -3698,6 +3798,8 @@ class TimelineManager {
         TimelineUtils.removeEventListenerSafe(window, 'pagehide', this.onPageHide);
         TimelineUtils.removeEventListenerSafe(window, 'beforeunload', this.onBeforeUnload);
         TimelineUtils.removeEventListenerSafe(document, 'visibilitychange', this.onVisibilityChange);
+        TimelineUtils.removeEventListenerSafe(document, 'click', this.onPotentialSendClick, true);
+        TimelineUtils.removeEventListenerSafe(document, 'keydown', this.onPotentialSendKeyDown, true);
         TimelineUtils.removeEventListenerSafe(this.ui.timelineBar, 'mouseover', this.onTimelineBarOver);
         TimelineUtils.removeEventListenerSafe(this.ui.timelineBar, 'mouseout', this.onTimelineBarOut);
         TimelineUtils.removeEventListenerSafe(this.ui.timelineBar, 'focusin', this.onTimelineBarFocusIn);
@@ -3764,6 +3866,8 @@ class TimelineManager {
         this.onPageHide = null;
         this.onBeforeUnload = null;
         this.onVisibilityChange = null;
+        this.onPotentialSendClick = null;
+        this.onPotentialSendKeyDown = null;
         this.onAutoSendImageUploadChange = null;
         this.onAutoSendImageUploadCandidate = null;
         this.onAutoSendImageUploadsToggleClick = null;
@@ -3776,6 +3880,7 @@ class TimelineManager {
         this.pendingActiveId = null;
         this.temporaryPin = null;
         this.pendingAutoBottomJump = null;
+        this._pendingMessageSendSnapshot = null;
         this._pendingAutoSendImageUpload = null;
     }
 
