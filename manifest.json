@@ -28,9 +28,9 @@
         "https://chatgpt.com/*",
         "https://chat.openai.com/*"
       ],
-      "js": ["js/timeline/fiber-bridge-chatgpt.js"],
+      "js": ["js/apiCapture/chatgpt.js"],
       "world": "MAIN",
-      "run_at": "document_idle"
+      "run_at": "document_start"
     },
     {
       "matches": [

@@ -142,6 +142,10 @@ class FakeElement {
         return this.attributes[name] ?? null;
     }
 
+    removeAttribute(name) {
+        delete this.attributes[name];
+    }
+
     addEventListener(type, handler) {
         if (!this.eventListeners[type]) this.eventListeners[type] = [];
         this.eventListeners[type].push(handler);
@@ -317,6 +321,12 @@ function createManager(options = {}) {
     manager.getSiteNameFromUrl = () => 'ChatGPT';
     manager.ui.timelineBar = document.createElement('div');
     manager.ui.timelineBar.className = 'ait-chat-timeline-bar';
+    manager.ui.track = document.createElement('div');
+    manager.ui.track.className = 'ait-timeline-track';
+    manager.ui.trackContent = document.createElement('div');
+    manager.ui.trackContent.className = 'ait-timeline-track-content';
+    manager.ui.track.appendChild(manager.ui.trackContent);
+    manager.ui.timelineBar.appendChild(manager.ui.track);
     document.body.appendChild(manager.ui.timelineBar);
     return { manager, document, storageCalls };
 }
@@ -354,10 +364,21 @@ test('togglePin creates a single temporary marker without writing pin storage', 
     assert.equal(pins.length, 1);
     assert.equal(pins[0].tagName, 'BUTTON');
     assert.equal(pins[0].getAttribute('aria-label'), 'Return to pinned answer');
-    assert.equal(pins[0].style.getPropertyValue('--n'), '0.5');
+    assert.equal(pins[0].style.getPropertyValue('--timeline-pin-y'), '12px');
+
+    manager.scrollContainer.scrollTop = 840;
+    const replaced = await manager.toggleCurrentTemporaryPin();
+
+    assert.equal(replaced, true);
+    assert.equal(manager.temporaryPin.scrollTop, 840);
+    assert.equal(manager.ui.timelineBar.querySelectorAll('.timeline-pin-marker').length, 1);
+    assert.equal(
+        manager.ui.timelineBar.querySelector('.timeline-pin-marker').getAttribute('aria-label'),
+        'Return to pinned answer'
+    );
 });
 
-test('clicking a temporary triangle marker scrolls back to the captured scroll position', async () => {
+test('clicking a temporary line marker scrolls back to the captured scroll position', async () => {
     const { manager, document } = createManager();
     const first = makeMarker(document, 'chatgpt-1');
     const second = makeMarker(document, 'chatgpt-2');
@@ -366,6 +387,7 @@ test('clicking a temporary triangle marker scrolls back to the captured scroll p
     manager.contentSpanPx = 1000;
     manager.scrollContainer = { scrollTop: 450 };
     manager.activeTurnId = 'chatgpt-1';
+    manager.scheduleScrollSync = () => {};
     let scrolledTo = null;
     manager.smoothScrollTo = (element) => {
         scrolledTo = element;
@@ -378,6 +400,9 @@ test('clicking a temporary triangle marker scrolls back to the captured scroll p
 
     assert.equal(scrolledTo, null);
     assert.equal(manager.scrollContainer.scrollTop, 450);
+    assert.equal(manager.pinNavigationActive, true);
+    assert.equal(manager.ui.timelineBar.classList.contains('ait-pin-location-active'), true);
+    assert.equal(pin.getAttribute('aria-current'), 'location');
 });
 
 test('timeline toolbar shows a Pin chat button instead of the flash note pencil', () => {
@@ -393,25 +418,59 @@ test('timeline toolbar shows a Pin chat button instead of the flash note pencil'
     assert.equal(pinButton.style.display, 'flex');
     assert.match(pinButton.innerHTML, /M12 17v5/);
     assert.equal(document.querySelector('.ait-notepad-btn'), null);
+    assert.equal(document.querySelector('.ait-question-list-btn'), null);
 });
 
-test('timeline toolbar shows an auto-send image upload switch above the timeline', () => {
+test('Pin toolbar button stays an action while replacing the saved position', async () => {
+    const { manager, document } = createManager();
+    manager.ui.timelineBar.remove();
+    manager.ui.timelineBar = null;
+    manager.injectTimelineUI();
+    manager.scrollContainer = { scrollTop: 320 };
+
+    const pinButton = document.querySelector('.ait-temp-pin-btn');
+    manager.ui.wrapper = null;
+    assert.equal(pinButton.getAttribute('aria-label'), 'Pin chat');
+    assert.equal(pinButton.getAttribute('aria-pressed'), null);
+    assert.equal(pinButton.classList.contains('active'), false);
+
+    await manager.toggleCurrentTemporaryPin();
+    assert.equal(pinButton.getAttribute('aria-label'), 'Pin chat');
+    assert.equal(pinButton.getAttribute('aria-pressed'), null);
+    assert.equal(pinButton.classList.contains('active'), false);
+
+    manager.scrollContainer.scrollTop = 640;
+    await manager.toggleCurrentTemporaryPin();
+    assert.equal(manager.temporaryPin.scrollTop, 640);
+    assert.equal(pinButton.getAttribute('aria-label'), 'Pin chat');
+    assert.equal(pinButton.getAttribute('aria-pressed'), null);
+    assert.equal(pinButton.classList.contains('active'), false);
+});
+
+test('timeline toolbar keeps the auto-send image upload feature hidden while unavailable', () => {
     const { manager, document } = createManager();
     manager.ui.timelineBar.remove();
     manager.ui.timelineBar = null;
 
     manager.injectTimelineUI();
 
-    const wrapper = document.querySelector('.ait-chat-timeline-wrapper');
     const toggle = document.querySelector('.ait-auto-send-upload-toggle');
-    const timelineBar = document.querySelector('.ait-chat-timeline-bar');
 
-    assert.ok(toggle);
-    assert.equal(toggle.getAttribute('role'), 'switch');
-    assert.equal(toggle.getAttribute('aria-checked'), 'false');
-    assert.equal(toggle.getAttribute('aria-label'), '上传图片后自动发送');
-    assert.equal(wrapper.children[0], toggle);
-    assert.equal(wrapper.children[1], timelineBar);
+    assert.equal(manager.autoSendImageUploadsAvailable, false);
+    assert.equal(manager.autoSendImageUploadsEnabled, false);
+    assert.equal(toggle, null);
+});
+
+test('timeline tooltip preview contains only the question text', () => {
+    const { manager, document } = createManager();
+    const dot = document.createElement('button');
+    const preview = manager._buildNodeTooltipElement(dot, '这是用户的问题');
+
+    assert.equal(preview.children.length, 1);
+    assert.equal(preview.children[0].className, 'timeline-tooltip-content');
+    assert.equal(preview.children[0].textContent, '这是用户的问题');
+    assert.equal(preview.querySelector('.timeline-tooltip-time'), null);
+    assert.equal(preview.querySelector('.timeline-tooltip-actions'), null);
 });
 
 test('auto-send image upload waits for upload readiness then sends once', () => {
@@ -429,6 +488,7 @@ test('auto-send image upload waits for upload readiness then sends once', () => 
     timers.length = 0;
     let ready = false;
     let sent = 0;
+    manager.autoSendImageUploadsAvailable = true;
     manager.autoSendImageUploadsEnabled = true;
     manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
     manager.adapter.isImageUploadReadyToSend = () => ready;
@@ -469,6 +529,7 @@ test('auto-send image upload waits for an attachment preview before sending', ()
     timers.length = 0;
     let hasAttachment = false;
     let sent = 0;
+    manager.autoSendImageUploadsAvailable = true;
     manager.autoSendImageUploadsEnabled = true;
     manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
     manager.adapter.isImageUploadReadyToSend = () => true;
@@ -506,6 +567,7 @@ test('auto-send image upload sends when upload makes a disabled composer ready e
     timers.length = 0;
     let ready = false;
     let sent = 0;
+    manager.autoSendImageUploadsAvailable = true;
     manager.autoSendImageUploadsEnabled = true;
     manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
     manager.adapter.isImageUploadReadyToSend = () => ready;
@@ -542,6 +604,7 @@ test('auto-send image upload handles pasted image files', () => {
     });
     timers.length = 0;
     let sent = 0;
+    manager.autoSendImageUploadsAvailable = true;
     manager.autoSendImageUploadsEnabled = true;
     manager.adapter.isImageUploadReadyToSend = () => true;
     manager.adapter.hasImageUploadAttachment = () => true;
@@ -572,6 +635,7 @@ test('auto-send image upload ignores non-image files and disabled switch', () =>
     });
     timers.length = 0;
     manager.adapter.getImageUploadInputSelector = () => 'input[type="file"]';
+    manager.autoSendImageUploadsAvailable = true;
 
     const input = document.createElement('input');
     input.setAttribute('type', 'file');
@@ -591,6 +655,212 @@ test('timeline stylesheet defines the temporary pin toolbar button', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
     assert.match(css, /\.ait-temp-pin-btn\s*\{/);
     assert.match(css, /\.ait-temp-pin-btn\.active\s*\{/);
+});
+
+test('timeline pin gets its own full-gap slot after a pinned question', () => {
+    const { manager, document } = createManager();
+    const first = makeMarker(document, 'chatgpt-1');
+    const second = makeMarker(document, 'chatgpt-2');
+    first.offsetTop = 100;
+    second.offsetTop = 200;
+    manager.markers = [first, second];
+    manager.ui.wrapper = document.createElement('div');
+    manager.ui.timelineBar.clientHeight = 240;
+    manager.getTrackPadding = () => 16;
+    manager.getCompactGap = () => 12;
+    manager.detectCssVarTopSupport = () => false;
+    manager.scrollContainer = { scrollTop: 108 };
+
+    manager.setTemporaryPinAtScrollTop(108, second.id);
+
+    const pin = manager.ui.trackContent.querySelector('.timeline-pin-marker');
+    assert.ok(pin);
+    assert.deepEqual(Array.from(manager.yPositions), [108, 120]);
+    assert.equal(pin.style.getPropertyValue('--timeline-pin-y'), '132px');
+    assert.equal(manager.temporaryPin.slotIndex, 2);
+    assert.equal(manager.temporaryPin.trackY - manager.yPositions[1], 12);
+    assert.equal(manager.ui.timelineBar.querySelector('.timeline-pin-marker'), pin);
+
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    const variables = fs.readFileSync(path.join(__dirname, '..', 'styles', 'variables.css'), 'utf8');
+    assert.match(css, /\.timeline-pin-marker\s*\{[\s\S]*?top:\s*var\(--timeline-pin-y, 0px\)/);
+    assert.match(css, /\.timeline-pin-marker::before\s*\{[\s\S]*?width:\s*var\(--timeline-pin-line-width\)/);
+    assert.doesNotMatch(css, /border-left:\s*9px solid/);
+    assert.match(variables, /--timeline-pin-line-width:\s*10px/);
+    assert.match(variables, /--timeline-pin-line-color:\s*#F5B700/);
+});
+
+test('near-edge pin positions share one discrete slot without crowding either question', () => {
+    const { manager, document } = createManager();
+    const first = makeMarker(document, 'chatgpt-1');
+    const second = makeMarker(document, 'chatgpt-2');
+    const third = makeMarker(document, 'chatgpt-3');
+    first.offsetTop = 100;
+    second.offsetTop = 500;
+    third.offsetTop = 1100;
+    manager.markers = [first, second, third];
+    manager.ui.wrapper = document.createElement('div');
+    manager.ui.timelineBar.clientHeight = 400;
+    manager.getTrackPadding = () => 16;
+    manager.getCompactGap = () => 12;
+    manager.detectCssVarTopSupport = () => false;
+
+    assert.equal(manager.getTemporaryPinSlotIndex(101, null), 1);
+    assert.equal(manager.getTemporaryPinSlotIndex(499, null), 1);
+    assert.equal(manager.getTemporaryPinSlotIndex(500, null), 2);
+
+    manager.setTemporaryPinAtScrollTop(499);
+
+    assert.deepEqual(Array.from(manager.yPositions), [182, 206, 218]);
+    assert.equal(manager.temporaryPin.trackY, 194);
+    assert.equal(manager.temporaryPin.trackY - manager.yPositions[0], 12);
+    assert.equal(manager.yPositions[1] - manager.temporaryPin.trackY, 12);
+});
+
+test('pin navigation emphasis clears after scrolling away from the saved location', () => {
+    const { manager } = createManager();
+    manager.scrollContainer = { scrollTop: 450 };
+    manager.setTemporaryPinAtScrollTop(450);
+    manager.setPinNavigationActive(true);
+
+    manager.scrollContainer.scrollTop = 460;
+
+    assert.equal(manager.syncPinNavigationState(), false);
+    assert.equal(manager.pinNavigationActive, false);
+    assert.equal(manager.ui.timelineBar.classList.contains('ait-pin-location-active'), false);
+});
+
+test('Pin icon is the first control below the timeline and aligns with resting ticks', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    assert.match(css, /\.ait-chat-timeline-wrapper\s*\{[\s\S]*?width:\s*32px/);
+    assert.doesNotMatch(css, /\.ait-question-list-btn\s*\{/);
+    assert.match(css, /\.ait-temp-pin-btn\s*\{[\s\S]*?top:\s*calc\(var\(--timeline-toolbar-y, 100%\) \+ 6px\);[\s\S]*?right:\s*-6px/);
+    assert.match(css, /\.timeline-starred-btn\s*\{[\s\S]*?top:\s*calc\(var\(--timeline-toolbar-y, 100%\) \+ 38px\);[\s\S]*?right:\s*-6px/);
+});
+
+test('timeline utility icons follow the last visible question line', () => {
+    const { manager, document } = createManager();
+    manager.ui.wrapper = document.createElement('div');
+    manager.ui.timelineBar.clientHeight = 400;
+    manager.ui.track.scrollTop = 0;
+    manager.yPositions = [182, 194, 206, 218];
+
+    assert.equal(manager.updateTimelineToolbarPosition(), true);
+    assert.equal(manager.ui.wrapper.style.getPropertyValue('--timeline-toolbar-y'), '218px');
+});
+
+test('selected pin becomes the only emphasized timeline location', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    assert.match(css, /\.ait-chat-timeline-bar\.ait-pin-location-active[\s\S]*?\.timeline-pin-marker-current:not\(:hover\)::before\s*\{[\s\S]*?width:\s*var\(--timeline-line-width-active\)/);
+    assert.match(css, /\.ait-chat-timeline-bar\.ait-pin-location-active[\s\S]*?\.ait-timeline-dot\.active:not\(:hover\):not\(:focus-visible\)::after\s*\{[\s\S]*?background-color:\s*var\(--ait-timeline-dot-color\)/);
+});
+
+test('idle lines alternate between long and short widths while the active line stays emphasized', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    const variables = fs.readFileSync(path.join(__dirname, '..', 'styles', 'variables.css'), 'utf8');
+    assert.match(variables, /--timeline-compact-line-width-long:\s*14px/);
+    assert.match(variables, /--timeline-compact-line-width-short:\s*10px/);
+    assert.match(variables, /--timeline-line-width-active:\s*28px/);
+    assert.match(variables, /--timeline-pin-line-width:\s*10px/);
+    assert.match(css, /\.ait-timeline-dot\.line-odd::after\s*\{[\s\S]*?width:\s*var\(--timeline-compact-line-width-short\)/);
+    assert.match(css, /\.ait-timeline-dot\.active::after\s*\{[\s\S]*?width:\s*var\(--timeline-line-width-active\)/);
+    assert.match(css, /\.ait-timeline-dot\.active:hover::after,[\s\S]*?width:\s*var\(--timeline-line-width-hover\)/);
+    assert.match(css, /\.timeline-pin-marker:hover::before,[\s\S]*?width:\s*var\(--timeline-line-width-hover\)/);
+});
+
+test('hover cascade expands two neighboring slots and includes the yellow Pin slot', () => {
+    const { manager, document } = createManager();
+    manager.markers = ['1', '2', '3', '4'].map(id => makeMarker(document, `chatgpt-${id}`));
+    manager.yPositions = [100, 112, 136, 148];
+
+    manager.markers.forEach(marker => {
+        marker.dotElement.className = 'ait-timeline-dot';
+        manager.ui.trackContent.appendChild(marker.dotElement);
+    });
+    manager.temporaryPin = { scrollTop: 450, trackY: 124, sourceMarkerId: null };
+    manager.renderPinMarkers();
+
+    const pin = manager.ui.trackContent.querySelector('.timeline-pin-marker-current');
+    assert.equal(manager.setTimelineHoverCascade(pin), true);
+    assert.equal(manager.markers[1].dotElement.classList.contains('timeline-neighbor-1'), true);
+    assert.equal(manager.markers[2].dotElement.classList.contains('timeline-neighbor-1'), true);
+    assert.equal(manager.markers[0].dotElement.classList.contains('timeline-neighbor-2'), true);
+    assert.equal(manager.markers[3].dotElement.classList.contains('timeline-neighbor-2'), true);
+
+    assert.equal(manager.setTimelineHoverCascade(manager.markers[1].dotElement), true);
+    assert.equal(manager.markers[0].dotElement.classList.contains('timeline-neighbor-1'), true);
+    assert.equal(pin.classList.contains('timeline-neighbor-1'), true);
+    assert.equal(manager.markers[2].dotElement.classList.contains('timeline-neighbor-2'), true);
+});
+
+test('hover cascade uses 28, 20, 14 and 10 pixel width steps', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    const variables = fs.readFileSync(path.join(__dirname, '..', 'styles', 'variables.css'), 'utf8');
+    assert.match(variables, /--timeline-line-width-hover:\s*28px/);
+    assert.match(variables, /--timeline-line-width-near:\s*20px/);
+    assert.match(variables, /--timeline-line-width-far:\s*14px/);
+    assert.match(css, /\.ait-timeline-dot\.timeline-neighbor-1[\s\S]*?width:\s*var\(--timeline-line-width-near\)/);
+    assert.match(css, /\.ait-timeline-dot\.timeline-neighbor-2[\s\S]*?width:\s*var\(--timeline-line-width-far\)/);
+    assert.match(css, /\.timeline-pin-marker\.timeline-neighbor-1[\s\S]*?width:\s*var\(--timeline-line-width-near\)/);
+});
+
+test('timeline stylesheet renders every node as a right-anchored expanding line', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'timeline.css'), 'utf8');
+    const variables = fs.readFileSync(path.join(__dirname, '..', 'styles', 'variables.css'), 'utf8');
+    assert.match(css, /\.ait-timeline-dot::after\s*\{[\s\S]*?right:\s*2px/);
+    assert.match(css, /\.ait-timeline-dot:hover::after,[\s\S]*?width:\s*var\(--timeline-line-width-hover\)/);
+    assert.match(css, /\.ait-timeline-dot\.active::after\s*\{[\s\S]*?width:\s*var\(--timeline-line-width-active\)/);
+    assert.match(css, /\.ait-chat-timeline-bar\s*\{[\s\S]*?background:\s*transparent/);
+    assert.match(css, /height:\s*var\(--timeline-hit-height\)/);
+    assert.match(variables, /--timeline-compact-gap:\s*12px/);
+    assert.match(variables, /--timeline-hit-height:\s*12px/);
+    assert.match(variables, /--timeline-line-width-hover:\s*28px/);
+    assert.match(variables, /--timeline-line-width-active:\s*28px/);
+    assert.match(variables, /--timeline-line-emphasis-color:\s*#111111/);
+    assert.match(variables, /html\[data-timeline-theme="dark"\][\s\S]*--timeline-line-emphasis-color:\s*#F5F5F5/);
+    assert.match(css, /\.ait-timeline-dot:hover::after,[\s\S]*?background-color:\s*var\(--timeline-line-emphasis-color\)/);
+    assert.match(css, /\.ait-timeline-dot\.active::after\s*\{[\s\S]*?background-color:\s*var\(--timeline-line-emphasis-color\)/);
+});
+
+test('ChatGPT timeline keeps a safe fallback inset and detects the native prompt directory', () => {
+    const adapter = fs.readFileSync(path.join(__dirname, '..', 'js', 'timeline', 'adapters', 'chatgpt.js'), 'utf8');
+    assert.match(adapter, /const defaultRightInset = 16/);
+    assert.match(adapter, /button\[data-toc-item-index\]/);
+});
+
+test('timeline geometry keeps a small question set clustered at a fixed 12px gap', () => {
+    const { manager, document } = createManager();
+    manager.ui.timelineBar.clientHeight = 400;
+    manager.ui.trackContent = document.createElement('div');
+    manager.ui.timelineBar.appendChild(manager.ui.trackContent);
+    manager.getTrackPadding = () => 16;
+    manager.getCompactGap = () => 12;
+    manager.detectCssVarTopSupport = () => false;
+    manager.markers = Array.from({ length: 4 }, (_, index) => makeMarker(document, `chatgpt-${index}`));
+
+    manager.updateTimelineGeometry();
+
+    assert.equal(manager.isCompactMode, true);
+    assert.deepEqual(Array.from(manager.yPositions), [182, 194, 206, 218]);
+    assert.equal(manager.contentHeight, 400);
+});
+
+test('timeline geometry preserves the 12px gap in long chats by growing the inner track', () => {
+    const { manager, document } = createManager();
+    manager.ui.timelineBar.clientHeight = 400;
+    manager.ui.trackContent = document.createElement('div');
+    manager.ui.timelineBar.appendChild(manager.ui.trackContent);
+    manager.getTrackPadding = () => 16;
+    manager.getCompactGap = () => 12;
+    manager.detectCssVarTopSupport = () => false;
+    manager.markers = Array.from({ length: 40 }, (_, index) => makeMarker(document, `chatgpt-${index}`));
+
+    manager.updateTimelineGeometry();
+
+    assert.equal(manager.yPositions[0], 16);
+    assert.equal(manager.yPositions[39], 484);
+    assert.equal(manager.contentHeight, 500);
+    assert.equal(manager.yPositions[1] - manager.yPositions[0], 12);
 });
 
 test('timeline stylesheet defines the auto-send image upload switch', () => {

@@ -1,0 +1,16 @@
+[    3721ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/accounts/check/v4-2023-04-27?timezone_offset_min=-480:0
+[    4209ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/sentinel/chat-requirements/prepare:0
+[    4209ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/me:0
+[    4209ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/system_hints?mode=plugins:0
+[    4209ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/system_hints?mode=basic:0
+[    4210ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/system_hints?mode=custom_agents:0
+[    4210ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0
+[    6475ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/conversation/init:0
+[    6595ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/checkout_pricing_config/configs/US:0
+[    6595ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/settings/voices?voice_mode=advanced:0
+[    7165ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0
+[    9617ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0
+[   10734ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/favicon.ico:0
+[   14069ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0
+[   22309ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0
+[   38834ms] [ERROR] Failed to load resource: the server responded with a status of 403 () @ https://chatgpt.com/backend-anon/models?iim=false&is_gizmo=false&supports_model_picker_upgrade_presets=true:0

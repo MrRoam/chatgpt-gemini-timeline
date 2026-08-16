@@ -1,0 +1,93 @@
+- generic [ref=e1]:
+  - link "跳至内容" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e6]:
+    - generic [ref=e8]:
+      - navigation "侧边栏":
+        - generic:
+          - generic:
+            - generic:
+              - button "打开边栏"
+        - generic:
+          - generic:
+            - link "新聊天":
+              - /url: /
+          - generic: 搜索聊天
+          - generic:
+            - link "图片":
+              - /url: /images
+        - generic:
+          - generic:
+            - button "打开“个人资料”菜单"
+      - generic [ref=e9]:
+        - heading "历史聊天记录" [level=2] [ref=e10]
+        - navigation "历史聊天记录" [ref=e12]:
+          - generic [ref=e15]:
+            - link "主页" [ref=e16] [cursor=pointer]:
+              - /url: /
+            - generic [ref=e19]:
+              - button "搜索聊天" [ref=e20] [cursor=pointer]
+              - button "关闭边栏" [expanded] [ref=e25]
+          - list [ref=e29]:
+            - listitem [ref=e30]:
+              - link "新聊天 控制 Shift O" [ref=e31] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e32]: 新聊天
+                - generic [ref=e40]:
+                  - generic "控制" [ref=e41]:
+                    - generic [ref=e42]: Ctrl
+                    - text: +
+                  - generic "Shift" [ref=e43]: +
+                  - generic [ref=e45]: O
+            - listitem
+          - link "图片" [ref=e47] [cursor=pointer]:
+            - /url: /images
+          - generic [ref=e54]:
+            - link "插件" [ref=e55] [cursor=pointer]:
+              - /url: /plugins
+            - generic [ref=e62] [cursor=pointer]: 深度研究
+          - generic [ref=e69]:
+            - link [ref=e70] [cursor=pointer]:
+              - /url: https://openai.com/chatgpt/pricing/
+            - generic [ref=e78] [cursor=pointer]: 设置
+            - generic [ref=e82] [cursor=pointer]: 帮助
+          - generic [ref=e92]:
+            - generic [ref=e93]:
+              - paragraph [ref=e94]: 获取为你量身定制的回复
+              - paragraph [ref=e95]: 登录以获取基于已保存聊天的回答，并可创建图片和上传文件。
+            - button "登录" [ref=e97] [cursor=pointer]
+    - generic [ref=e101]:
+      - generic [ref=e102]:
+        - banner:
+          - button "模型选择器" [ref=e104] [cursor=pointer]:
+            - generic [ref=e105]: ChatGPT
+          - generic [ref=e113]:
+            - button "登录" [ref=e114] [cursor=pointer]
+            - button "免费注册" [ref=e116] [cursor=pointer]
+      - main [ref=e119]:
+        - generic [ref=e121]:
+          - heading "我们先从哪里开始呢？" [level=1] [ref=e129]
+          - generic [ref=e131]:
+            - generic [ref=e138]:
+              - generic [ref=e141]:
+                - button "添加文件等" [ref=e144] [cursor=pointer]
+                - textbox "与 ChatGPT 聊天" [active] [ref=e147]:
+                  - paragraph [ref=e148]: 有问题，尽管问
+                - generic [ref=e150]:
+                  - button "开始听写" [ref=e151] [cursor=pointer]
+                  - button "启动语音功能" [ref=e154] [cursor=pointer]:
+                    - generic [ref=e158]: 语音
+              - button [ref=e159]
+              - button [ref=e160]
+            - generic [ref=e167]:
+              - text: ChatGPT 是 AI。使用即表示你同意我们的
+              - link "条款" [ref=e168] [cursor=pointer]:
+                - /url: https://openai.com/terms
+              - text: 和
+              - link "隐私政策" [ref=e169] [cursor=pointer]:
+                - /url: https://openai.com/privacy
+              - text: 。聊天内容可能会被审核，并用于改进我们的 AI 模型。
+              - link "了解更多" [ref=e170] [cursor=pointer]:
+                - /url: https://help.openai.com/en/articles/5722486-how-your-data-is-used-to-improve-model-performance
+  - alert [ref=e171]
+  - status [ref=e172]

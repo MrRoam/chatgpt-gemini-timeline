@@ -30,6 +30,44 @@ class SiteAdapter {
     }
 
     /**
+     * 查询消息节点前，为虚拟化平台准备派生出来的 DOM 状态。
+     * 静态 DOM 平台无需实现。
+     */
+    prepareTimelineNodes(context = {}) {
+        return false;
+    }
+
+    /** 标记平台派生的节点状态已过期。 */
+    invalidateTimelineNodes(reason = '') {
+    }
+
+    /** 用于识别“对话结构发生变化”的稳定选择器。 */
+    getTimelineStructureSelectors() {
+        const selector = this.getUserMessageSelector();
+        return selector ? [selector] : [];
+    }
+
+    /** 会影响对话结构的属性。 */
+    getTimelineStructureAttributeFilter() {
+        return [];
+    }
+
+    /** 在重建 marker 前同步平台接口捕获的数据。 */
+    syncCapturedChatsData() {
+    }
+
+    /** 订阅平台接口捕获数据的更新。 */
+    subscribeCapturedChatsDataUpdated(callback) {
+        return () => {};
+    }
+
+    /** 判断摘要是否仍是临时占位文本。 */
+    isPlaceholderSummary(text) {
+        const normalized = String(text || '').trim();
+        return !normalized || normalized === '[图片或文件]';
+    }
+
+    /**
      * Generate unique ID for a message (using index)
      * @param {Element} element - Message DOM element
      * @param {number} index - Message index in the list
@@ -92,7 +130,7 @@ class SiteAdapter {
      * @param {Element} firstMessage - First message element
      * @returns {Element|null}
      */
-    findConversationContainer(firstMessage) {
+    findConversationContainer(firstMessage, context = {}) {
         return firstMessage?.parentElement;
     }
 

@@ -7,14 +7,15 @@
 :root {
     --ait-timeline-dot-color: #D1D5DB; /* Light mode gray */
     --ait-timeline-dot-active-color: #6128FF; /* 紫色 rgb(97, 40, 255) */
+    --timeline-line-emphasis-color: #111111; /* 浅色模式：当前/悬停节点使用黑色 */
     --timeline-star-color: #FF7D03; /* 收藏橙色 rgb(255, 125, 3) */
 
     /* Tooltip tokens (light) */
     --timeline-tooltip-bg: #f8fafc;
     --timeline-tooltip-text: #334155;
     --timeline-tooltip-border: #e2e8f0;
-    --timeline-tooltip-radius: 12px;
-    --timeline-tooltip-shadow: 0 4px 14px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+    --timeline-tooltip-radius: 14px;
+    --timeline-tooltip-shadow: 0 4px 8px rgba(0,0,0,0.16);
     /* geometry */
     --timeline-tooltip-lh: 18px;
     --timeline-tooltip-pad-y: 10px;
@@ -25,7 +26,7 @@
     --timeline-tooltip-anim-in: 120ms cubic-bezier(0, 0, 0.2, 1);
     --timeline-tooltip-anim-out: 100ms linear;
 
-    --timeline-bar-bg: rgba(246, 246, 248, 0.8);
+    --timeline-bar-bg: transparent;
     --ait-timeline-dot-size: 14px;
     --timeline-star-size: 17px; /* 五角星盒子尺寸（增加1px） */
     --timeline-active-ring: 3px;
@@ -35,16 +36,24 @@
     --timeline-min-gap: 25px;
     /* enlarged hit area for easier clicking */
     --timeline-hit-size: 30px;
+    --timeline-hit-height: 12px;
     /* spacing model */
     --timeline-tooltip-gap-visual: 4px;   /* ✅ 需求1：减少间距，让 tooltip 靠近圆点 (8px → 4px) */
     --timeline-tooltip-gap-box: 2px;      /* ✅ 需求1：同步减少 box gap (4px → 2px) */
     /* ✅ 移除：--timeline-hold-ms 已删除，长按功能已移除 */
     
     /* ✅ 紧凑模式（横线样式）变量 */
-    --timeline-compact-gap: 30px;              /* 紧凑模式默认间距 */
-    --timeline-compact-line-width-long: 20px;  /* 长横线宽度 */
-    --timeline-compact-line-width-short: 14px; /* 短横线宽度 */
+    --timeline-compact-gap: 12px;              /* 参考 Codex 的紧凑刻度中心距 */
+    --timeline-compact-line-width-long: 14px;  /* 偶数节点：较长的静止刻度 */
+    --timeline-compact-line-width-short: 10px; /* 奇数节点：较短的静止刻度 */
     --timeline-compact-line-height: 2px;       /* 横线高度 */
+    --timeline-line-width-hover: 28px;         /* 光标所在刻度 */
+    --timeline-line-width-near: 20px;          /* 紧邻光标的刻度 */
+    --timeline-line-width-far: 14px;           /* 距光标两格的刻度 */
+    --timeline-line-width-active: 28px;        /* 当前节点无需悬停也保持清晰可见 */
+    --timeline-pin-line-width: 10px;           /* Pin 静止时与问题刻度等长 */
+    --timeline-pin-line-height: 3px;
+    --timeline-pin-line-color: #F5B700;
     
     /* ✅ 追问按钮变量 */
     --ait-quick-ask-bg: #1a1a1a;
@@ -107,13 +116,15 @@
 html[data-timeline-theme="dark"] {
     --ait-timeline-dot-color: #A0A0A0; /* ✅✅ 进一步提升亮度：#888 → #A0A0A0，深色主题下更清晰 */
     --ait-timeline-dot-active-color: #8B5CF6; /* ✅✅ 更明亮的紫色：#7C3AED → #8B5CF6 (violet-500)，对比度更强 */
+    --timeline-line-emphasis-color: #F5F5F5; /* 深色模式：当前/悬停节点使用白色 */
+    --timeline-pin-line-color: #FFD166;
     --timeline-star-color: #FB923C; /* 橙色保持不变，已经很好 */
     --timeline-active-ring: 4px; /* ✅✅ 加粗激活环：3px → 4px，深色主题下更醒目 */
     /* Dark tooltip palette */
     --timeline-tooltip-bg: #27272a;
     --timeline-tooltip-text: #e5e7eb;
     --timeline-tooltip-border: #3f3f46;
-    --timeline-bar-bg: rgba(45, 45, 48, 0.95); /* ✅✅ 更高不透明度：0.92 → 0.95，背景更扎实 */
+    --timeline-bar-bg: transparent;
     
     /* ✅ 追问按钮 - 深色主题 */
     --ait-quick-ask-bg: #f5f5f5;

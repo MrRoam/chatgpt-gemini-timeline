@@ -21,7 +21,7 @@ test('manifest only injects the retained ChatGPT timeline feature set', () => {
     const injectedFiles = [...jsFiles, ...cssFiles];
 
     const required = [
-        'js/timeline/fiber-bridge-chatgpt.js',
+        'js/apiCapture/chatgpt.js',
         'js/timeline/timeline-manager.js',
         'js/timeline/question-list/index.js',
         'js/timeline/star-input-modal/star-input-modal.js',
@@ -30,6 +30,12 @@ test('manifest only injects the retained ChatGPT timeline feature set', () => {
     for (const file of required) {
         assert.ok(jsFiles.includes(file), `${file} should stay injected`);
     }
+
+    const apiCaptureScript = manifest.content_scripts.find(script =>
+        (script.js || []).includes('js/apiCapture/chatgpt.js')
+    );
+    assert.equal(apiCaptureScript?.world, 'MAIN');
+    assert.equal(apiCaptureScript?.run_at, 'document_start');
 
     const removedFeaturePathParts = [
         'formula/',
